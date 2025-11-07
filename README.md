@@ -122,6 +122,14 @@ graph LR
   D-->D1
 ```
 
+```mermaid
+graph TD;
+    A-->B;
+    A-->C;
+    B-->D;
+    C-->D;
+```
+
 ## Core design principles
 
 * **Agnostic:** no assumptions about robot, OS, sensor taxonomy, or data schema.

@@ -104,32 +104,22 @@ No DB, no schema migrations, no exotic drivers. You get **fast setup** and **tra
 ## Architecture
 
 ```mermaid
-graph LR
-  subgraph Robot / ROS 2 Network
-    A1[ROS 2 Nodes<br/>(sensors, nav, etc.)]
-    A2[TF / Images / Numeric Topics]
+flowchart LR
+  subgraph "Robot / ROS 2 Network"
+    A1["ROS 2 Nodes (sensors, nav, etc.)"]
+    A2["TF / Images / Numeric topics"]
   end
 
   A1 --> A2
-  A2 --> B[R'DASH Agent (rclpy)]
-  B -->|HTTP/HTTPS: /api/push, /api/push_image, /api/push_tf| C[R'DASH App (Flask + Socket.IO)]
-  C -->|WebSocket| D[Browser Dashboard (ECharts)]
+  A2 --> B["RDASH Agent (rclpy)"]
+  B -- "HTTP/HTTPS: /api/push, /api/push_image, /api/push_tf" --> C["RDASH App (Flask + Socket.IO)"]
+  C -- "WebSocket" --> D["Browser Dashboard (ECharts)"]
 
   subgraph Browser
-    D1[Charts / Panels]
+    D1["Charts / Panels"]
   end
 
   D --> D1
-
-```
-
-
-```mermaid
-graph TD;
-    A-->B;
-    A-->C;
-    B-->D;
-    C-->D;
 ```
 
 ## Core design principles

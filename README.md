@@ -105,21 +105,24 @@ No DB, no schema migrations, no exotic drivers. You get **fast setup** and **tra
 
 ```mermaid
 graph LR
-subgraph Robot / ROS2 Network
-A1[ROS2 Nodes (Senors, nav, etc.)]
-A2[TF / Images / Numeric Topics]
-end
-A1-->A2
-A2-->B[RDASH Agent (rclpy)]
-B-->|HTTP/HTTPS: /api/push, api/push_image, api/push_tf| C[RDASH App (Flask + SocketIO)]
-C-->|Websocket| D[Browser Dashboard (JS ECharts)]
+  subgraph Robot / ROS 2 Network
+    A1[ROS 2 Nodes<br/>(sensors, nav, etc.)]
+    A2[TF / Images / Numeric Topics]
+  end
 
-subgraph Browser
-D1[Charts / Panels]
-end
+  A1 --> A2
+  A2 --> B[R'DASH Agent (rclpy)]
+  B -->|HTTP/HTTPS: /api/push, /api/push_image, /api/push_tf| C[R'DASH App (Flask + Socket.IO)]
+  C -->|WebSocket| D[Browser Dashboard (ECharts)]
 
-D-->D1
+  subgraph Browser
+    D1[Charts / Panels]
+  end
+
+  D --> D1
+
 ```
+
 
 ```mermaid
 graph TD;

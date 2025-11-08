@@ -308,7 +308,7 @@ python3 ros2_rdash_test_simulation.py
 
 > Open the dashboard on a browser using `http://HOST:8080` or `https://HOST:8443` and watch dummy sensors stream.
 
-### API Docs
+### API Docs _(API runs independently on REST endpoints, no requirement of ROS2 runtime)_
 > Everything is an HTTP API. The server accepts JSON/multipart payloads and serves lightweight JSON for status, history, and metadata.
 
 > Auth: Use Authorization: Bearer <token> for all /api/* endpoints and the WebSocket. The video endpoint also accepts ?token=... as a query parameter for simple embed tests.

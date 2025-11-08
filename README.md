@@ -132,7 +132,7 @@ flowchart TD
 
   A1 --> A2
   A2 --> B["RDASH Agent (rclpy)"]
-  B -- Z["HTTP/HTTPS: /api/push, /api/push_image, /api/push_tf, etc"] --> C["RDASH App (Flask + Socket.IO)"]
+  B --> Z["HTTP/HTTPS: /api/push, /api/push_image, /api/push_tf, etc"] --> C["RDASH App (Flask + Socket.IO)"]
 
   subgraph "Non-ROS Runtimes"
     X1["Custom scripts / services / IoT Devices"]

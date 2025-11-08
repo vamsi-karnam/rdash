@@ -26,7 +26,7 @@
 1. **Clone the repo:**
 
 ```bash
-git clone https://github.com/vamsi-karnam/R-Dash.git
+git clone https://github.com/vamsi-karnam/rdash.git
 ```
 
 2. **(Optional) Put TLS certs** in `ros2_rdash_app/source/certs/` as `cert.pem` + `key.pem` (self-signed at your own risk).
@@ -34,7 +34,7 @@ git clone https://github.com/vamsi-karnam/R-Dash.git
 3. **Run the server:** *HTTPS is optional*
 
 ```bash
-cd R-Dash-main/ros2_rdash_app/source
+cd main/ros2_rdash_app/source
 python3 -m venv .venv && source .venv/bin/activate (optional)
 pip install -r requirements.txt
 ```
@@ -46,7 +46,7 @@ python3 rdash_app.py --host 0.0.0.0 --port 8443 --auth-token "<SECRET>"
 4. **Run the agent on your ROS2 box:**
 
 ```bash
-cd R-Dash-main/ros2_rdash_agent/source
+cd main/ros2_rdash_agent/source
 python3 -m venv .venv && source .venv/bin/activate (optional)
 pip install -r requirements.txt
 ```
@@ -201,7 +201,7 @@ ros2 topic list
 **Install:**
 
 ```bash
-cd R-Dash-main/ros2_rdash_app/source
+cd main/ros2_rdash_app/source
 python3 -m venv .venv && source .venv/bin/activate (optional)
 pip install -r requirements.txt
 ```
@@ -251,7 +251,7 @@ Make sure host firewalls allow the chosen port. From another machine on your LAN
 **Install:**
 
 ```bash
-cd R-Dash-main/ros2_rdash_agent/source
+cd main/ros2_rdash_agent/source
 python3 -m venv .venv && source .venv/bin/activate (optional)
 pip install -r requirements.txt
 ```
@@ -301,7 +301,7 @@ For a quick smoke test without real robots:
 > Open a new terminal on the ROS2 machine (where the Agent is already running)
 
 ```bash
-cd R-Dash-main/test_sim
+cd main/test_sim
 # Follow setup hints in setup.txt if needed (ROS 2 environment, sourcing, etc.)
 python3 ros2_rdash_test_simulation.py
 ```

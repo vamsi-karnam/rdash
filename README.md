@@ -136,10 +136,12 @@ flowchart TD
 
   subgraph "Non-ROS Runtimes"
     X1["Custom scripts / services / IoT Devices"]
-    X2["HTTP clients (curl, Python requests, JS fetch, etc.)"]
-    X1 --> X2
+    X2["Metadata / Images / Numeric topics / Text / Audio"]
   end
-  X2 -- "HTTP/HTTPS: /api/push, /api/push_image, /api/push_tf, etc" --> C
+
+  X1 --> X2
+  X2 --> Y["HTTP clients (curl, Python requests, JS fetch, etc.)"]
+  Y -- "HTTP/HTTPS: /api/push, /api/push_image, /api/push_tf, etc" --> C
 
   C -- "WebSocket" --> D["Browser Dashboard (JS ECharts)"]
 

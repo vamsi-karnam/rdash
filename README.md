@@ -84,7 +84,7 @@ python3 rdash_agent.py \
 * [Data flow](#data-flow)
 * [Performance & tuning](#performance--tuning)
 * [Warnings & security notes](#warnings--security-notes)
-* [License / Author / Contact](#license--author--contact)
+* [License / Author / Contact](#license--author--contact--citation)
 * [Acknowledgments](#acknowledgments)
 * [Appendix I - Flags and Env vars](#appendix-i---full-flags--env-vars)
 * [Appendix II - CLI usage examples](#appendix-ii---full-cli-examples)

@@ -392,7 +392,7 @@ Developed by **Vamsi Karnam**, 2025.
 Released under the **Apache 2.0 License**.
 
 If you use this software in any of your works, please cite:
-> Karnam, S. V. (2025). *R'DASH: An Open Robot Information Telemetry Transport and Visualization Framework.*
+> Karnam, S. V. (2025). *R'DASH: An Open-Source Robot Information Telemetry Transport and Visualization Framework.*
 
 For contact, collaborations, bug reports, or business, reach out via saivamsi.karnam@gmail.com.
 

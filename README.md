@@ -133,6 +133,14 @@ flowchart TD
   A1 --> A2
   A2 --> B["RDASH Agent (rclpy)"]
   B -- "HTTP/HTTPS: /api/push, /api/push_image, /api/push_tf, etc" --> C["RDASH App (Flask + Socket.IO)"]
+
+  subgraph "Non-ROS Runtimes"
+    X1["Custom scripts / services / IoT Devices"]
+    X2["HTTP clients (curl, Python requests, JS fetch, etc.)"]
+    X1 --> X2
+  end
+  X2 -- "HTTP/HTTPS: /api/push, /api/push_text, /api/push_image, /video/<robot>/<sensor>?token=..." --> C
+
   C -- "WebSocket" --> D["Browser Dashboard (JS ECharts)"]
 
   subgraph Browser

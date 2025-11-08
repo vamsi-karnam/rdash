@@ -73,7 +73,7 @@ python3 rdash_agent.py \
 * [Intro & description](#intro--description)
 * [Architecture](#architecture)
 * [Core design principles](#core-design-principles)
-* [How agnostic is rdash?](#how-agnostic-is-rdash)
+* [Features](#features)
 * [Directory structure](#dirctory-structure)
 * [Usage](#usage)
   * [Prerequisites](#prerequisites)
@@ -141,9 +141,9 @@ flowchart TD
 * **No DB:** in-memory, ring-buffered, low-latency path to the browser.
 * **Minimal deps:** plain Flask/Socket.IO on the server; rclpy on the agent.
 
-## How agnostic is R'DASH?
+## Features
 
-* **OS:** Linux/macOS/Windows (anything that runs Python 3 + Flask + rclpy; ROS typically on Linux).
+* **OS:** Linux/macOS/Windows (anything that runs Python 3 + Flask + rclpy; ROS typically on Linux). As a bonus the http/https host-ip can also be opened on a mobile device connected to the same LAN.
 * **Robot / sensors:** Fully topic-agnostic for numeric streams (any message that flattens to numbers). Images supported via `sensor_msgs/Image` or `sensor_msgs/CompressedImage`. TF visualized as a simple frame tree.
 * **ROS 2 distros:** Smoke-tested with **ROS 2 Jazzy**; other distros should work as long as `rclpy` is available.
 * **Transport:** Pure HTTP(S) + WebSocket - no ROS in the server/web app, so you can place it anywhere (edge, admin PC, cloud with a tunnel, etc.).

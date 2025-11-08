@@ -143,7 +143,7 @@ flowchart TD
 
 ## Features
 
-* **OS:** Linux/macOS/Windows (anything that runs Python 3 + Flask + rclpy; ROS typically on Linux). As a bonus the http/https host-ip can also be opened on a mobile device connected to the same LAN.
+* **OS:** Linux/macOS/Windows (anything that runs Python 3 + Flask + rclpy; ROS typically on Linux). As a bonus the http/https host website can also be opened on a mobile device connected to the same network.
 * **Robot / sensors:** Fully topic-agnostic for numeric streams (any message that flattens to numbers). Images supported via `sensor_msgs/Image` or `sensor_msgs/CompressedImage`. TF visualized as a simple frame tree.
 * **ROS 2 distros:** Smoke-tested with **ROS 2 Jazzy**; other distros should work as long as `rclpy` is available.
 * **Transport:** Pure HTTP(S) + WebSocket - no ROS in the server/web app, so you can place it anywhere (edge, admin PC, cloud with a tunnel, etc.).

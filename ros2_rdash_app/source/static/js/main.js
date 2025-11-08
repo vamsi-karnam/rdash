@@ -50,6 +50,7 @@ function hideGate(){ const g=document.getElementById('auth-gate'); if(g) g.hidde
 function showGate(){ const g=document.getElementById('auth-gate'); if(g) g.hidden = false; }
 
 // State 
+let ws = null;
 const chartsBySensor = new Map();   // key -> { ec, seriesIdByMetric, paused, windowSec, leadSec, ... }
 const pendingUpdates = new Map();   // key -> { t, data:{} }
 let rafScheduled = false;
@@ -856,3 +857,4 @@ document.addEventListener('DOMContentLoaded', async () => {
   navigateOverview();
   setInterval(() => { if (!currentRobot) navigateOverview(); }, 1500);
 });
+

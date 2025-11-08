@@ -6,9 +6,13 @@
 
 ## Screenshots
 
-* `![Overview](./docs/img/overview.png)`
-* `![Sensor Chart](./docs/img/chart.png)`
-* `![Camera](./docs/img/camera.png)`
+<img width="1911" height="1107" alt="Screenshot 2025-11-08 003408" src="https://github.com/user-attachments/assets/fce6498f-4c2e-4bf2-a3e1-7efc51322229" />
+<img width="1906" height="1101" alt="Screenshot 2025-11-07 232132" src="https://github.com/user-attachments/assets/ddd12550-1166-492c-a87f-30dff1a7fa46" />
+<img width="1910" height="1106" alt="Screenshot 2025-11-08 003714" src="https://github.com/user-attachments/assets/33a11b09-e0de-4d66-b895-cc58526ee08d" />
+<img width="1912" height="1100" alt="Screenshot 2025-11-08 003650" src="https://github.com/user-attachments/assets/d5167fd5-fab4-4991-a446-992ca72e39df" />
+<img width="1906" height="1102" alt="Screenshot 2025-11-07 232332" src="https://github.com/user-attachments/assets/60da1a2a-5c23-42ea-a3aa-ea11a70a2f18" />
+<img width="1912" height="1106" alt="Screenshot 2025-11-07 232312" src="https://github.com/user-attachments/assets/ed0f6b09-d7f6-491c-b81c-40b117e56a53" />
+<img width="1910" height="1105" alt="Screenshot 2025-11-07 232148" src="https://github.com/user-attachments/assets/734715c8-fea0-4c1a-acf4-517859f4e321" />
 
 ## TL;DR
 

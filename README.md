@@ -139,7 +139,7 @@ flowchart TD
     X2["HTTP clients (curl, Python requests, JS fetch, etc.)"]
     X1 --> X2
   end
-  X2 -- "HTTP/HTTPS: /api/push, /api/push_text, /api/push_image, /video/<robot>/<sensor>?token=..." --> C
+  X2 -- "HTTP/HTTPS: /api/push, /api/push_image, /api/push_tf, etc" --> C
 
   C -- "WebSocket" --> D["Browser Dashboard (JS ECharts)"]
 

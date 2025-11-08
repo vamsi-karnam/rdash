@@ -21,7 +21,7 @@
 ## TL;DR
 
 > For folks who already have ROS2 working and just want to see data flow end-to-end.
-> Check supported data types from [supported input types](#supported-data) and [prerequisites](#prerequisites)
+> Check supported data types from [supported input types](#supported-data) and [prerequisites](#prerequisites).
 
 1. **Clone the repo:**
 

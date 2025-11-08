@@ -81,6 +81,7 @@ python3 rdash_agent.py \
   * [Agent (rdash Agent)](#agent-rdash-agent)
   * [Preferred deployment topology](#preferred-deployment-topology)
   * [Test simulation](#test-simulation)
+  * [API docs]()
 * [Front-end behavior & controls](#dashboard-behavior)
 * [Data flow](#data-flow)
 * [Performance & tuning](#performance--tuning)
@@ -129,7 +130,7 @@ flowchart TD
     D1["Charts / Panels"]
   end
 
-  D --> D1
+  D -->  D1
 ```
 
 ## Core design principles
@@ -306,6 +307,15 @@ python3 ros2_rdash_test_simulation.py
 ```
 
 > Open the dashboard on a browser using `http://HOST:8080` or `https://HOST:8443` and watch dummy sensors stream.
+
+### API Docs
+> Everything is an HTTP API. The server accepts JSON/multipart payloads and serves lightweight JSON for status, history, and metadata.
+> Auth: Use Authorization: Bearer <token> for all /api/* endpoints and the WebSocket. The video endpoint also accepts ?token=... as a query parameter for simple embed tests.
+> State is RAM-only. Deleting series/logs clears in-memory buffers. Restarting the server clears all state.
+> Streaming: Numeric data is coalesced and broadcast over WebSocket; camera frames are exposed as MJPEG at /video/<robot>/<sensor>.
+> Topic-agnostic: The agent flattens any ROS 2 message into numeric fields and pushes to /api/push. Units/scales are attachable via --unit rules.
+
+Find the documentation here: *[api_documentation.pdf](https://github.com/user-attachments/files/23427688/api_documentation.pdf)*
 
 
 ## Dashboard behavior

@@ -594,16 +594,19 @@ async function loadRobotsInto(container) {
       const status = (data.status || {})[name] || 'disconnected';
       card.appendChild(el('div', { style: 'margin:6px 0' }, statusPill(status)));
 
-      const info = el('div', { className: 'muted', style: 'margin:6px 0' }, `${meta.sensors.length} sensors`);
+      const info = el('div', { className: 'muted', style: 'margin:6px 0' }, `${meta.sensors.length} streams`); // display number of streams on robot card
       card.appendChild(info);
 
       const pills = el('div');
+      // camera active pill
       if (meta.cameras.length) pills.appendChild(el('span', { className: 'pill' }, 'Camera'));
       // audio tiles not shown in UI (API kept)
-      // optional: show log presence
+      // text log active pill
       if (meta.texts && meta.texts.length) pills.appendChild(el('span', { className: 'pill' }, 'Text'));
-      card.appendChild(pills);
+      // numeric active pill
+      if (meta.sensors && meta.sensors.length) {pills.appendChild(el('span', { className: 'pill' }, 'Numeric'));}
 
+      card.appendChild(pills);
       card.onclick = () => navigateRobot(name);
       container.appendChild(card);
     }

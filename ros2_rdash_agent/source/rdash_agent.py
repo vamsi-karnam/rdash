@@ -197,29 +197,18 @@ class UrdafAgent(Node):
 
             subs = []
             if msg_type == 'sensor_msgs/msg/CompressedImage':
-                subs.append(self.create_subscription(
-                    CompressedImage, topic,
-                    lambda m, t=topic, mt=msg_type: self.on_compressed(t, mt, m), self.qos_img))
+                subs.append(self.create_subscription(CompressedImage, topic, lambda m, t=topic, mt=msg_type: self.on_compressed(t, mt, m), self.qos_img)) # qos_img = qos_num_best
             elif msg_type == 'sensor_msgs/msg/Image':
-                subs.append(self.create_subscription(
-                    Image, topic,
-                    lambda m, t=topic, mt=msg_type: self.on_raw_image(t, mt, m), self.qos_img))
+                subs.append(self.create_subscription(Image, topic, lambda m, t=topic, mt=msg_type: self.on_raw_image(t, mt, m), self.qos_img))
             elif msg_type in ('std_msgs/msg/UInt8MultiArray', 'std_msgs/msg/ByteMultiArray'):
                 # UI tiles hidden for now; endpoint kept
-                subs.append(self.create_subscription(
-                    get_message(msg_type), topic,
-                    lambda m, t=topic, mt=msg_type: self.on_audio_bytes(t, mt, m), self.qos_img))
+                subs.append(self.create_subscription(get_message(msg_type), topic, lambda m, t=topic, mt=msg_type: self.on_audio_bytes(t, mt, m), self.qos_img))
             elif msg_type in ('tf2_msgs/msg/TFMessage',):
-                subs.append(self.create_subscription(
-                    TFMessage, topic, self.on_tf, self.qos_num_best))
+                subs.append(self.create_subscription(TFMessage, topic, self.on_tf, self.qos_num_best))
             elif msg_type == 'sensor_msgs/msg/PointCloud2':
-                subs.append(self.create_subscription(
-                    PointCloud2, topic,
-                    lambda m, t=topic, mt=msg_type: self.on_pc2(t, mt, m), self.qos_num_rel))
+                subs.append(self.create_subscription(PointCloud2, topic, lambda m, t=topic, mt=msg_type: self.on_pc2(t, mt, m), self.qos_num_best))
             elif msg_type == 'std_msgs/msg/String':
-                subs.append(self.create_subscription(
-                    String, topic,
-                    lambda m, t=topic, mt=msg_type: self.on_string(t, mt, m), self.qos_num_best))
+                subs.append(self.create_subscription(String, topic, lambda m, t=topic, mt=msg_type: self.on_string(t, mt, m), self.qos_num_best))
             else:
                 # numeric
                 if self.numeric_qos == 'best':

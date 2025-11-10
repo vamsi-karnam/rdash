@@ -73,64 +73,63 @@ R’DASH is data-type agnostic at its core, it automatically discovers and strea
 
 1. **Numeric data**
 
-Type: Any message that can be flattened into numbers (std_msgs/Float32, Int32, custom telemetry messages, etc.).
+- Type: Any message that can be flattened into numbers (std_msgs/Float32, Int32, custom telemetry messages, etc.).
 
-Topic naming: Completely free-form (e.g., /robot/speed_mps, /system/load, /foo/dds/cpu/percent).
+- Topic naming: Completely free-form (e.g., /robot/speed_mps, /system/load, /foo/dds/cpu/percent).
 
-Visualization: Time-series charts on the robot details page or, if the topic contains "dds" in its name, in the DDS side panel.
+- Visualization: Time-series charts on the robot details page or, if the topic contains "dds" in its name, in the DDS side panel.
 
-QoS: Agent subscribes using BEST_EFFORT by default - works with both RELIABLE and BEST_EFFORT publishers, unless specified using --numeric-qos flag
+- QoS: Agent subscribes using BEST_EFFORT by default - works with both RELIABLE and BEST_EFFORT publishers, unless specified using --numeric-qos flag
 
 2. **Text and logs**
 
-Type: std_msgs/String or any plain text payload.
+- Type: std_msgs/String or any plain text payload.
 
-Topic naming: Free-form; multiple text topics per robot are supported (e.g., /robot/log, /robot/debug_log).
+- Topic naming: Free-form; multiple text topics per robot are supported (e.g., /robot/log, /robot/debug_log).
 
-Visualization: Live, scrollable log panels on the robot details page or, if the topic contains "dds" in its name, in the DDS side panel.
+- Visualization: Live, scrollable log panels on the robot details page or, if the topic contains "dds" in its name, in the DDS side panel.
 
-QoS: Agent subscribes using BEST_EFFORT by default - works with both RELIABLE and BEST_EFFORT publishers.
+- QoS: Agent subscribes using BEST_EFFORT by default - works with both RELIABLE and BEST_EFFORT publishers.
 
 1/2. ***DDS topics***
 
-Any topic whose path includes the segment "dds" (case-insensitive) is automatically grouped in the DDS side panel, separate from regular robot sensors.
-This makes it easy to route diagnostics, network metrics, or system-level telemetry from DDS bridges or adapters without cluttering the main dashboard.
+- Any topic whose path includes the segment "dds" (case-insensitive) is automatically grouped in the DDS side panel, separate from regular robot sensors. This makes it easy to route diagnostics, network metrics, or system-level telemetry from DDS bridges or adapters without cluttering the main dashboard.
 
 > Example: /infra/dds/network/latency_ms, /dds/system/diagnostics
 
 3. **Images and video frames**
 
-Type: sensor_msgs/Image (raw) or sensor_msgs/CompressedImage (JPEG).
+- Type: sensor_msgs/Image (raw) or sensor_msgs/CompressedImage (JPEG).
 
-Topic naming: Flexible - each unique topic becomes a camera stream (e.g., /robot/camera/front/image, /robot/camera/rear/image/).
+- Topic naming: Flexible - each unique topic becomes a camera stream (e.g., /robot/camera/front/image, /robot/camera/rear/image/).
 
-Visualization: Appears as a camera tile with a live MJPEG feed.
+- Visualization: Appears as a camera tile with a live MJPEG feed.
 
-Important: Arbitrary topics with “.jpg”, “.png”, etc. in their name are not auto-detected; they must use one of the standard ROS2's image topic types or be uploaded through /api/push_image.
+- Important: Arbitrary topics with “.jpg”, “.png”, etc. in their name are not auto-detected; they must use one of the standard ROS2's image topic types or be uploaded through /api/push_image.
 
 QoS: Agent subscribes using BEST_EFFORT by default - works with both RELIABLE and BEST_EFFORT publishers.
 
 4. **TF transforms**
 
-Type: tf2_msgs/TFMessage (/tf and /tf_static).
+- Type: tf2_msgs/TFMessage (/tf and /tf_static).
 
-Visualization: Compact tree showing parent–child frame relationships.
+- Visualization: Compact tree showing parent–child frame relationships.
 
-QoS: Agent subscribes using BEST_EFFORT by default - works with both RELIABLE and BEST_EFFORT publishers.
+- QoS: Agent subscribes using BEST_EFFORT by default - works with both RELIABLE and BEST_EFFORT publishers.
 
 5. **Point clouds**
 
-Type: sensor_msgs/PointCloud2
+- Type: sensor_msgs/PointCloud2
 
-Visualization: Not rendered directly in rdash v1.x, but the agent can summarize it into numeric statistics (min/max/mean) using --pc2-summarize.
+- Visualization: Not rendered directly in rdash v1.x, but the agent can summarize it into numeric statistics (min/max/mean) using --pc2-summarize.
 
-Best for: LiDARs or depth sensors where quick numeric insight is enough.
+- Best for: LiDARs or depth sensors where quick numeric insight is enough.
 
-QoS: Agent subscribes using BEST_EFFORT by default - works with both RELIABLE and BEST_EFFORT publishers.
+- QoS: Agent subscribes using BEST_EFFORT by default - works with both RELIABLE and BEST_EFFORT publishers.
 
 6. **Audio**
 
-Endpoint available for compatibility (/api/push_audio), but not visualized yet in the UI.
+- Endpoint available for compatibility (/api/push_audio), but not visualized yet in the UI.
 
 
 ## Core design principles

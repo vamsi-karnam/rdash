@@ -494,7 +494,7 @@ def register_http_handlers(app: Flask, sio: SocketIO, store: TimeSeriesStore):
             if text:
                 store.append_text(robot, sensor, ts, text, level, typ)
                 try:
-                    sio.emit('text_data',
+                    socketio.emit('text_data',
                              {"robot": robot, "sensor": sensor, "t": ts, "text": text, "level": level},
                              namespace="/ws")
                 except Exception:

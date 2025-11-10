@@ -40,6 +40,20 @@ function fmtClock(ms) {
   return `${hh}:${mm}:${ss}`;
 }
 
+let _ddsPrimed = false;
+
+async function refreshDdsDrawerIfNeeded(robot) {
+  if (!_ddsPrimed || !ddsDrawerEl) return;
+  const robotsData = await fetchJSON('/api/robots');
+  const meta = robotsData.robots?.[robot] || { sensors: [], texts: [] };
+  const ddsSensors = (meta.sensors || []).filter(isDdsSensorName);
+  const ddsTexts   = (meta.texts   || []).filter(isDdsSensorName);
+  const types      = await fetchJSON(`/api/types/${encodeURIComponent(robot)}`);
+  const statuses   = await fetchJSON(`/api/status/${encodeURIComponent(robot)}`);
+  await rebuildDdsDrawerFor(robot, ddsSensors, ddsTexts, types, statuses);
+}
+
+
 function setStatus(text) { const pill = document.getElementById('status-pill'); if (pill) pill.textContent = text; }
 window.saveTokenAndReconnect = function(token){ setToken(token || ''); reconnectAll(); };
 window.clearToken = function(){ clearToken(); reconnectAll(); };
@@ -55,6 +69,18 @@ const chartsBySensor = new Map();   // key -> { ec, seriesIdByMetric, paused, wi
 const pendingUpdates = new Map();   // key -> { t, data:{} }
 let rafScheduled = false;
 let currentRobot = null;
+
+// Track current DDS items so we don't rebuild drawer every tick
+const ddsIndexByRobot = new Map(); // robot -> { sensors:Set, texts:Set }
+
+function _ensureDdsIndex(robot) {
+  let idx = ddsIndexByRobot.get(robot);
+  if (!idx) {
+    idx = { sensors: new Set(), texts: new Set() };
+    ddsIndexByRobot.set(robot, idx);
+  }
+  return idx;
+}
 
 // Text logs state
 const logsBySensor = new Map();     // key -> { containerEl, paused, follow, lines }
@@ -97,6 +123,91 @@ function elK(tag, attrs = {}, ...kids) {
   for (const k of kids) n.appendChild(typeof k === 'string' ? document.createTextNode(k) : k);
   return n;
 }
+
+// DDS helpers (per-robot drawer)
+// Treat any topic whose *path segments* include "dds" as a DDS item.
+// Agnostic to vendor and to the leading namespace ("robot", "rdash", etc.).
+// Configurable: add other markers if you want to bucket similar infra topics.
+const DDS_MARKERS = ['dds'];
+function isDdsSensorName(s) {
+  if (!s) return false;
+  const n = String(s).trim().replace(/^\/+/, '');
+  const segs = n.split(/[\/]+/).map(x => x.toLowerCase());
+  return DDS_MARKERS.some(m => segs.includes(m.toLowerCase()));
+}
+
+let ddsDrawerEl = null;
+let ddsHandleEl = null;
+
+function destroyDdsDrawer() {
+  if (ddsHandleEl && ddsHandleEl.parentNode) ddsHandleEl.parentNode.removeChild(ddsHandleEl);
+  if (ddsDrawerEl && ddsDrawerEl.parentNode) ddsDrawerEl.parentNode.removeChild(ddsDrawerEl);
+  ddsHandleEl = null;
+  ddsDrawerEl = null;
+}
+
+function attachDdsDrawerTo(detailEl) {
+  // safety
+  destroyDdsDrawer();
+
+  // Drawer
+  ddsDrawerEl = document.createElement('div');
+  ddsDrawerEl.className = 'dds-drawer';
+  ddsDrawerEl.setAttribute('aria-hidden', 'true');
+
+  const header = el('div', { className: 'dds-header' },
+    el('span', { className: 'dds-title' }, 'DDS'),
+    el('span', { className: 'spacer' }, ''),
+    el('button', { className: 'btn secondary', onclick: () => {
+      ddsDrawerEl.classList.remove('open');
+      ddsDrawerEl.setAttribute('aria-hidden', 'true');
+      // resize active charts for crisp layout
+      setTimeout(() => {
+        for (const entry of chartsBySensor.values()) {
+          try { entry?.ec?.resize({ animation: false }); } catch (_){}
+        }
+      }, 50);
+    } }, 'Close')
+  );
+  const content = el('div', { className: 'dds-content' });
+  ddsDrawerEl.appendChild(header);
+  ddsDrawerEl.appendChild(content);
+
+  // Handle (always shown on robot page)
+  ddsHandleEl = document.createElement('button');
+  ddsHandleEl.className = 'dds-drawer-handle';
+  ddsHandleEl.title = 'DDS';
+  ddsHandleEl.textContent = 'DDS (0)';
+  ddsHandleEl.onclick = () => {
+    const open = !ddsDrawerEl.classList.contains('open');
+    ddsDrawerEl.classList.toggle('open', open);
+    ddsDrawerEl.setAttribute('aria-hidden', String(!open));
+    setTimeout(() => {
+      for (const entry of chartsBySensor.values()) {
+        try { entry?.ec?.resize({ animation: false }); } catch (_){}
+      }
+    }, 50);
+  };
+
+  // Attach to the page (robot detail)
+  // We append the drawer first, then the handle so CSS sibling selector keeps z-order correct.
+  document.body.appendChild(ddsDrawerEl);
+  document.body.appendChild(ddsHandleEl);
+
+  // start placeholder
+  setDdsPlaceholder();
+}
+
+function setDdsPlaceholder() {
+  if (!ddsDrawerEl) return;
+  const wrap = ddsDrawerEl.querySelector('.dds-content');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  wrap.appendChild(el('div', { className: 'placeholder', style: 'margin:8px 0' },
+    'No DDS streams yet. You can bridge DDS→ROS 2 and publish under a dds/… namespace to group them here.'));
+  if (ddsHandleEl) ddsHandleEl.textContent = 'DDS (0)';
+}
+
 
 // Disposer helper 
 function disposeChartFor(sensorKey) {
@@ -501,6 +612,9 @@ async function loadRobotsInto(container) {
   }
 }
 function renderOverview() {
+  // ensure DDS drawer is only on robot page
+  destroyDdsDrawer();
+
   currentRobot = null;
   const detail = document.getElementById('detail');
   detail.style.display = 'none';
@@ -577,6 +691,9 @@ async function navigateRobot(name) {
   detail.appendChild(navBar);
   detail.appendChild(el('h2', {}, 'Robot: ', name));
 
+  // Attach per-robot DDS drawer (persistent on robot detail page)
+  attachDdsDrawerTo(detail);
+
   // Meta
   let metaSensors = [], metaCams = [], metaTexts = [];
   let types = {};
@@ -585,12 +702,42 @@ async function navigateRobot(name) {
     const robotsData = await fetchJSON('/api/robots');
     const meta = robotsData.robots?.[name] || { sensors: [], cameras: [], audios: [], texts: [] };
     metaSensors = meta.sensors || [];
-    metaCams = meta.cameras || [];
-    metaTexts = meta.texts || [];
-    types = await fetchJSON(`/api/types/${encodeURIComponent(name)}`);
-    const st = await fetchJSON(`/api/status/${encodeURIComponent(name)}`);
-    statuses = st || {};
-  } catch (e) { console.error(e); }
+    metaCams    = meta.cameras || [];
+    metaTexts   = meta.texts || [];
+    types       = await fetchJSON(`/api/types/${encodeURIComponent(name)}`);
+    const st    = await fetchJSON(`/api/status/${encodeURIComponent(name)}`);
+    statuses    = st || {};
+
+    // 1) Split DDS vs non-DDS ONCE here (these four are in scope for the rest of the function)
+    const ddsSensors     = metaSensors.filter(isDdsSensorName);
+    const ddsTexts       = metaTexts.filter(isDdsSensorName);
+    var   regularSensors = metaSensors.filter(s => !isDdsSensorName(s));  // define before use
+    var   regularTexts   = metaTexts.filter(s => !isDdsSensorName(s));    // define before use
+
+    // Seed the known DDS sets to avoid rebuild at data rate tick
+    const idx = _ensureDdsIndex(name);
+    idx.sensors = new Set(ddsSensors);
+    idx.texts   = new Set(ddsTexts);
+
+    console.debug('DDS split', {
+      allSensors: metaSensors,
+      ddsSensors,
+      regularSensors,
+      allTexts: metaTexts,
+      ddsTexts,
+      regularTexts
+    });
+
+    // 2) Build the DDS drawer content
+    await rebuildDdsDrawerFor(name, ddsSensors, ddsTexts, types, statuses);
+
+    // (no rendering here; the page stacks will use regularSensors/regularTexts below)
+  } catch (e) {
+    console.error(e);
+    // fallback if the API failed so the page still renders something
+    var regularSensors = metaSensors || [];
+    var regularTexts   = metaTexts || [];
+  }
 
   // TF preview
   try {
@@ -640,9 +787,9 @@ async function navigateRobot(name) {
     detail.appendChild(camsStack);
   }
 
-  //  Numeric sensors
+  // Numeric sensors
   const stack = el('div', { className: 'sensor-stack' });
-  for (const s of metaSensors) {
+  for (const s of regularSensors.filter(s => !isDdsSensorName(s))) {
     const acc = el('details', { className: 'accordion' });
     const typBadge = types[s] ? badge(types[s].split('/').pop(), types[s]) : null;
     const state = (statuses[s] && statuses[s].status) || 'disconnected';
@@ -697,9 +844,9 @@ async function navigateRobot(name) {
   detail.appendChild(stack);
 
   // Text streams (force render at bottom)
-  if (metaTexts.length) {
+  if (regularTexts.length) {
     const textStack = el('div', { className: 'sensor-stack' });
-    for (const tname of metaTexts) {
+    for (const tname of regularTexts.filter(s => !isDdsSensorName(s))) {
       const acc = el('details', { className: 'accordion' });
       const typBadge = types[tname] ? badge(types[tname].split('/').pop(), types[tname]) : null;
       const state = (statuses[tname] && statuses[tname].status) || 'disconnected';
@@ -784,6 +931,154 @@ async function navigateRobot(name) {
   }
 }
 
+// Rebuild drawer only for each specific robot (call from navigateRobot)
+async function rebuildDdsDrawerFor(robot, ddsSensors, ddsTexts, types, statuses) {
+  if (!ddsDrawerEl) return; // drawer created by attachDdsDrawerTo(detail)
+  const wrap = ddsDrawerEl.querySelector('.dds-content');
+  //wrap.innerHTML = '';
+
+  // Preserve which accordions were open (keyed by sensor name) ---new
+  const openSet = new Set(
+    Array.from(wrap.querySelectorAll('details.accordion[open]'))
+      .map(d => d.getAttribute('data-sensor'))
+      .filter(Boolean)
+  );
+  wrap.innerHTML = '';
+  // ---new
+
+  const count = (ddsSensors?.length || 0) + (ddsTexts?.length || 0);
+  if (ddsHandleEl) ddsHandleEl.textContent = `DDS (${count})`;
+
+  if (!count) { setDdsPlaceholder(); return; }
+  ddsHandleEl.textContent = `DDS (${count})`;
+
+  // Metrics group
+  if (ddsSensors?.length) {
+    wrap.appendChild(el('div', { className: 'muted', style: 'margin:8px 0 4px' }, 'Metrics'));
+    for (const s of ddsSensors) {
+      const acc = el('details', { className: 'accordion' });
+      acc.setAttribute('data-sensor', s);
+      const typBadge = types[s] ? badge(types[s].split('/').pop(), types[s]) : null;
+      const state = (statuses[s] && statuses[s].status) || 'disconnected';
+      const sum = el('summary', { className: 'accordion-summary' }, s, ' ', typBadge || '', ' ', statusPill(state));
+      const body = el('div', { className: 'accordion-body' });
+      const panel = el('div', { className: 'panel' });
+      panel.appendChild(el('div', { className: 'muted' }, s));
+      body.appendChild(panel);
+      acc.append(sum, body);
+      wrap.appendChild(acc);
+
+      // Restore previously-open state ---new
+      if (openSet.has(s)) acc.open = true;
+      // ---new
+
+      const sensorKey = `${robot}/${s}`;
+      acc.addEventListener('toggle', async () => {
+        if (!acc.open) {
+          disposeChartFor(sensorKey);
+          const oldWrap = panel.querySelector('.chart-wrap');
+          if (oldWrap) oldWrap.remove();
+          return;
+        }
+        const prevWrap = panel.querySelector('.chart-wrap');
+        if (prevWrap) prevWrap.remove();
+        const canvas = document.createElement('canvas');
+        panel.appendChild(canvas);
+        try {
+          const [hist, meta] = await Promise.all([
+            fetchJSON(`/api/history/${encodeURIComponent(robot)}/${encodeURIComponent(s)}`),
+            fetchJSON(`/api/meta/${encodeURIComponent(robot)}/${encodeURIComponent(s)}`)
+          ]);
+          buildChart(canvas, sensorKey, hist, (meta && meta.units) || {}, robot, s);
+          ensureSocket();
+          setTimeout(() => {
+            const entry = chartsBySensor.get(sensorKey);
+            if (entry && entry.ec) entry.ec.resize({ animation: false });
+          }, 0);
+        } catch (e) { console.error('DDS chart init failed', e); }
+      });
+    }
+  }
+
+  // Logs group
+  if (ddsTexts?.length) {
+    wrap.appendChild(el('div', { className: 'muted', style: 'margin:12px 0 4px' }, 'Logs'));
+    for (const tname of ddsTexts) {
+      const acc = el('details', { className: 'accordion' });
+      acc.setAttribute('data-sensor', tname);
+
+      const typBadge = types[tname] ? badge(types[tname].split('/').pop(), types[tname]) : null;
+      const state = (statuses[tname] && statuses[tname].status) || 'disconnected';
+      const sum = el('summary', { className: 'accordion-summary' }, tname, ' ', typBadge || '', ' ', statusPill(state));
+      const body = el('div', { className: 'accordion-body' });
+
+      const panel = el('div', { className: 'panel' });
+      panel.appendChild(el('div', { className: 'muted' }, tname));
+
+      const tools = el('div', { className: 'chart-toolbar' });
+      const pauseBtn = el('button', { className: 'btn secondary' }, 'Pause');
+      const clearBtn = el('button', { className: 'btn danger' }, 'Delete Data');
+      tools.appendChild(pauseBtn); tools.appendChild(clearBtn);
+      panel.appendChild(tools);
+
+      const wrapLog = el('div', { className: 'log-wrap' });
+      const lines = el('div', { className: 'log-lines' });
+      wrapLog.appendChild(lines);
+      panel.appendChild(wrapLog);
+
+      body.appendChild(panel);
+      acc.append(sum, body);
+      wrap.appendChild(acc);
+
+      // Restore previously-open state 
+      if (openSet.has(tname)) acc.open = true; // ---new
+
+      const sensorKey = `${robot}/${tname}`;
+
+      acc.addEventListener('toggle', async () => {
+        if (!acc.open) return;
+        if (!logsBySensor.has(sensorKey)) {
+          logsBySensor.set(sensorKey, { containerEl: lines, paused: false, follow: true, lines: 0 });
+        } else {
+          const e = logsBySensor.get(sensorKey);
+          e.containerEl = lines;
+        }
+        try {
+          const hist = await fetchJSON(`/api/text_history/${encodeURIComponent(robot)}/${encodeURIComponent(tname)}`);
+          const e = logsBySensor.get(sensorKey);
+          if (e?.containerEl) {
+            e.containerEl.innerHTML = '';
+            e.lines = 0;
+            for (const row of hist) appendLogLine(sensorKey, row.t, row.text, row.level);
+          }
+          ensureSocket();
+        } catch (err) { console.error('DDS text history failed', err); }
+      });
+
+      pauseBtn.addEventListener('click', () => {
+        const entry = logsBySensor.get(sensorKey);
+        if (!entry) return;
+        entry.paused = !entry.paused;
+        pauseBtn.textContent = entry.paused ? 'Resume' : 'Pause';
+        if (!entry.paused) entry.follow = true;
+      });
+
+      clearBtn.addEventListener('click', async () => {
+        const entry = logsBySensor.get(sensorKey);
+        if (entry?.containerEl) {
+          entry.containerEl.innerHTML = '';
+          entry.lines = 0;
+        }
+        try {
+          await fetch(`/api/delete_text/${encodeURIComponent(robot)}/${encodeURIComponent(tname)}`, {
+            method: 'POST', headers: getHeaders()
+          });
+        } catch (_) {}
+      });
+    }
+  }
+}
+
 // WebSocket 
 function ensureSocket(){
   const token = getToken();
@@ -796,7 +1091,17 @@ function ensureSocket(){
   ws.on('connect_error', (err) => { console.warn('WS connect_error', err && err.message); setStatus('Unauthorized'); showGate(); });
   ws.on('sensor_data', (msg) => {
     const { robot, sensor, t, data } = msg;
-    const sensorKey = `${robot}/${sensor}`;
+
+    if (currentRobot === robot && isDdsSensorName(sensor)) {
+      _ddsPrimed = true;
+      const idx = _ensureDdsIndex(robot);
+      if (!idx.sensors.has(sensor)) {
+        idx.sensors.add(sensor);
+        // Only rebuild if a *new* DDS metric appeared
+        refreshDdsDrawerIfNeeded(robot).catch(()=>{});
+      }
+    }
+    const sensorKey = `${robot}/${sensor}`; //keep?
 
     const entry = chartsBySensor.get(sensorKey);
     if (entry && entry.paused) {
@@ -834,14 +1139,23 @@ function ensureSocket(){
   });
 
   // NEW: live text lines
-  ws.on('text_data', (msg) => {
-    const { robot, sensor, t, text, level } = msg;
-    const sensorKey = `${robot}/${sensor}`;
-    const entry = logsBySensor.get(sensorKey);
-    if (!entry) return;         // only append if panel initialized/opened at least once
-    if (entry.paused) return;   // paused: ignore live appends
-    appendLogLine(sensorKey, t, text, level);
-  });
+   ws.on('text_data', (msg) => {
+     const { robot, sensor, t, text, level } = msg;
+    if (currentRobot === robot && isDdsSensorName(sensor)) {
+      const idx = _ensureDdsIndex(robot);
+      if (!idx.texts.has(sensor)) {
+        idx.texts.add(sensor);
+        // Only rebuild if a *new* DDS text stream appeared
+        refreshDdsDrawerIfNeeded(robot).catch(()=>{});
+      }
+    }
+     const sensorKey = `${robot}/${sensor}`;
+     const entry = logsBySensor.get(sensorKey);
+     if (!entry) return;
+     if (entry.paused) return;
+     appendLogLine(sensorKey, t, text, level);
+   });
+
 }
 
 // Boot

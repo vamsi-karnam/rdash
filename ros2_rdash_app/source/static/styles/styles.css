@@ -51,6 +51,8 @@ h1 { margin: 0; font-size: 22px; font-weight: 500; color: var(--accent); text-sh
 .robot-title { font-weight: 700; font-size: 17px; }
 .sensor-stack { display: flex; flex-direction: column; gap: 10px; }
 
+.sensor-stack > .accordion { margin-bottom: 14px; }
+
 /* Accordion */
 .accordion { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--bg-panel); }
 .accordion-summary { cursor: pointer; list-style: none; padding: 10px 14px; background: #0e1633; border-bottom: 1px solid var(--border); font-weight: 600; }
@@ -188,3 +190,76 @@ canvas { width: 100%; height: 280px; display: block; }
 .log-line.lvl-warn .log-txt  { color: #ffd479; }
 .log-line.lvl-error .log-txt { color: #ff8aa0; }
 .log-line.lvl-info .log-txt  { color: #cfe8ff; }
+
+/* DDS Drawer per-robot */
+.dds-drawer {
+  position: fixed;
+  top: 56px;                         /* sticky header height */
+  bottom: var(--footer-h);           /* stop above fixed footer */
+  right: 0;
+  width: clamp(360px, 42vw, 680px);  /* responsive but capped */
+  transform: translateX(100%);
+  transition: transform .18s ease;
+  background: rgba(15,21,48,0.88);
+  backdrop-filter: blur(6px);
+  border-left: 1px solid var(--border);
+  box-shadow: -8px 0 24px rgba(0,0,0,.35);
+  z-index: 1500;
+  display: flex;
+  flex-direction: column;
+  padding: 10px;
+  font-family: 'Rajdhani', sans-serif;
+}
+.dds-drawer.open { transform: translateX(0); }
+
+.dds-drawer-handle {
+  position: fixed;
+  top: 50%;
+  right: 0;                       /* always stuck to viewport edge */
+  transform: translateY(-50%);    /* vertically centered */
+  width: 32px;
+  padding: 6px 8px;
+  background: #25315d;
+  color: #fff;
+  border: 1px solid var(--border);
+  border-right: none;
+  border-top-left-radius: 8px;
+  border-bottom-left-radius: 8px;
+  cursor: pointer;
+  text-align: center;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  user-select: none;
+  z-index: 1501;
+}
+/* when the drawer is open, slide the handle to sit on its edge */
+.dds-drawer.open ~ .dds-drawer-handle {
+  right: clamp(360px, 42vw, 680px);
+}
+
+.dds-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.dds-title {
+  font-family: 'Orbitron', sans-serif;
+  color: var(--accent);
+  font-size: 18px;
+}
+.dds-content {
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1 1 auto;   /* fill drawer vertically */
+  min-height: 0;    /* allow scroll inside flex container */
+}
+/* prevent accidental shrinking of panels/charts inside drawer */
+.dds-content > .accordion,
+.dds-content .panel,
+.dds-content .chart-wrap {
+  flex: 0 0 auto;
+}

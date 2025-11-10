@@ -1,9 +1,14 @@
-# R'DASH - Robot Information Telemetry Transport Dashboard (v1.0)
+# R'DASH - Robot Information Telemetry Transport Dashboard (v1.1)
 **Author:** Vamsi Karnam
 
 **License:** Apache License 2.0
 
 *“ R’DASH (Robot Information Telemetry Transport Dashboard) is an open-source, cross-platform dashboard for real-time robot data visualization - developed and maintained by [Vamsi Karnam](https://www.linkedin.com/in/saivamsikarnam/) - Coalescing robot data made easy ”*
+
+## Version history
+
+- rdash_v1.0: Original development version
+- rdash_v1.1: Original development version (added DDS topic filtering, smoother streaming, and robust QoS support)
 
 ## Screenshots
 

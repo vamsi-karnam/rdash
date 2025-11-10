@@ -92,6 +92,7 @@ python3 rdash_agent.py \
 * [Appendix II - CLI usage examples](#appendix-ii---full-cli-examples)
 
 ## Intro & description
+
 **R'DASH** is a minimal, production-leaning data telemetry pipe for robots:
 * **Server (`rdash_app.py`)**: Flask + Socket.IO web app that ingests telemetry, keeps it in RAM, and broadcasts live updates to browsers.
 * **Agent (`rdash_agent.py`)**: A ROS2 node that discovers topics, flattens structured messages into numeric key/value pairs, pushes images/video frames, and optionally summarizes point clouds.
@@ -99,6 +100,7 @@ python3 rdash_agent.py \
 No DB, no schema migrations, no exotic drivers. You get **fast setup** and **transparent behavior**, plus opt-in controls to keep the browser responsive on heavy streams (lidar-like topics).
 
 ## Features
+
 * **OS:** Linux/macOS/Windows (anything that runs Python 3 + Flask + rclpy; ROS typically on Linux). As a bonus the http/https host website can also be opened on a mobile device connected to the same network.
 * **Robot / sensors:** Fully topic-agnostic for numeric streams (any message that flattens to numbers). Images supported via `sensor_msgs/Image` or `sensor_msgs/CompressedImage`. TF visualized as a simple frame tree.
 * **ROS2 distros:** Smoke-tested with **ROS2 Jazzy**; other distros should work as long as `rclpy` is available.
@@ -106,21 +108,79 @@ No DB, no schema migrations, no exotic drivers. You get **fast setup** and **tra
 * **Topic Schema**: Custom ROS2 topics are fully supported - no fixed naming scheme is required.
 
 ## Supported Data
-**Supported ROS2 input types:**
-* Numeric topics (anything flattenable into numbers) - **topic agnostic**.
-* Images/Video Frames via `sensor_msgs/Image` or `sensor_msgs/CompressedImage`.
-* Text/Logs via `std_msgs/String` (visualized in a rolling, console-style panel).
-* TF via `tf2_msgs/TFMessage`.
-* *(Audio endpoint is present for API compatibility but not visualised yet.)*
-* *(PointCloud2 is not visualised; use `--pc2-summarize` to publish stats as numeric.)*
-> Note: R’DASH agent automatically discovers all ROS2 topics - including custom ones. Any topic that publishes numeric, image, string, or PointCloud2 data will be captured and pushed to the server. You can use any topic name (for example, mybot/barometer01/pressure_mb). Similarly, Non-ROS runtimes can push data directly to the R'DASH server via the REST API (see [API Docs](#api-docs)) using arbitrary sensor names as long as the topic or source is publishing data.
+
+R’DASH is data-type agnostic at its core, it automatically discovers and streams any ROS 2 topic that publishes numeric, textual, or visual data. However, certain well-known ROS 2 message types receive enhanced visualization in the dashboard.
+
+1. **Numeric data**
+
+Type: Any message that can be flattened into numbers (std_msgs/Float32, Int32, custom telemetry messages, etc.).
+
+Topic naming: Completely free-form (e.g., /robot/speed_mps, /system/load, /foo/dds/cpu/percent).
+
+Visualization: Time-series charts on the robot details page or, if the topic contains "dds" in its name, in the DDS side panel.
+
+QoS: Agent subscribes using BEST_EFFORT by default - works with both RELIABLE and BEST_EFFORT publishers, unless specified using --numeric-qos flag
+
+2. **Text and logs**
+
+Type: std_msgs/String or any plain text payload.
+
+Topic naming: Free-form; multiple text topics per robot are supported (e.g., /robot/log, /robot/debug_log).
+
+Visualization: Live, scrollable log panels on the robot details page or, if the topic contains "dds" in its name, in the DDS side panel.
+
+QoS: Agent subscribes using BEST_EFFORT by default - works with both RELIABLE and BEST_EFFORT publishers.
+
+1/2. ***DDS topics***
+
+Any topic whose path includes the segment "dds" (case-insensitive) is automatically grouped in the DDS side panel, separate from regular robot sensors.
+This makes it easy to route diagnostics, network metrics, or system-level telemetry from DDS bridges or adapters without cluttering the main dashboard.
+
+> Example: /infra/dds/network/latency_ms, /dds/system/diagnostics
+
+3. **Images and video frames**
+
+Type: sensor_msgs/Image (raw) or sensor_msgs/CompressedImage (JPEG).
+
+Topic naming: Flexible - each unique topic becomes a camera stream (e.g., /robot/camera/front/image, /robot/camera/rear/image/).
+
+Visualization: Appears as a camera tile with a live MJPEG feed.
+
+Important: Arbitrary topics with “.jpg”, “.png”, etc. in their name are not auto-detected; they must use one of the standard ROS2's image topic types or be uploaded through /api/push_image.
+
+QoS: Agent subscribes using BEST_EFFORT by default - works with both RELIABLE and BEST_EFFORT publishers.
+
+4. **TF transforms**
+
+Type: tf2_msgs/TFMessage (/tf and /tf_static).
+
+Visualization: Compact tree showing parent–child frame relationships.
+
+QoS: Agent subscribes using BEST_EFFORT by default - works with both RELIABLE and BEST_EFFORT publishers.
+
+5. **Point clouds**
+
+Type: sensor_msgs/PointCloud2
+
+Visualization: Not rendered directly in rdash v1.x, but the agent can summarize it into numeric statistics (min/max/mean) using --pc2-summarize.
+
+Best for: LiDARs or depth sensors where quick numeric insight is enough.
+
+QoS: Agent subscribes using BEST_EFFORT by default - works with both RELIABLE and BEST_EFFORT publishers.
+
+6. **Audio**
+
+Endpoint available for compatibility (/api/push_audio), but not visualized yet in the UI.
+
 
 ## Core design principles
+
 * **Agnostic:** no assumptions about robot, OS, sensor taxonomy, or data schema.
 * **Simple to operate:** one server + one agent per ROS box.
 * **Transparent & observable:** deterministic trimming; optional UI badges for capping (if enabled in your build).
 * **No DB:** in-memory, ring-buffered, low-latency path to the browser.
 * **Minimal deps:** plain Flask/Socket.IO on the server; rclpy on the agent.
+
 
 ## Architecture
 
@@ -152,6 +212,7 @@ flowchart TD
 
   D -->  D1
 ```
+
 
 ## Dirctory structure
 

@@ -10,16 +10,17 @@
 - rdash_v1.0: Original development version
 
 - rdash_v1.1: Second development version
-
+```
 Changelog:
   - DDS topic filtering
   - Smoother streaming and robust QoS support 
-
+```
 - rdash_v1.2: First beta release
-
+```
 Changelog:
   - LiDAR Point Cloud Visualisation support
   - Zoom/Pan on charts (LShift+Scroll/LShift+LClick+Drag)
+```
 
 ## Screenshots
 

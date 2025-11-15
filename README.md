@@ -25,7 +25,7 @@ Changelog:
 - rdash_v1.3: Continued beta
 ```
 Changelog:
-  - Added support for file artifact support through API
+  - Added support for file artifacts through API
 ```
 
 ## Screenshots

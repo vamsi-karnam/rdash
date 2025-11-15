@@ -9,7 +9,7 @@ from pathlib import Path
 from collections import defaultdict, deque
 from typing import Dict, Tuple, Optional, Any, List
 
-from flask import Flask, jsonify, request, render_template, Response, make_response
+from flask import Flask, jsonify, request, render_template, Response, make_response, send_file
 from flask_socketio import SocketIO
 from werkzeug.middleware.proxy_fix import ProxyFix
 
@@ -17,6 +17,11 @@ DEFAULT_MAX_SAMPLES = int(os.environ.get("RDASH_MAX_SAMPLES", "2048"))
 DEFAULT_MAX_IMAGE_BYTES = int(os.environ.get("RDASH_MAX_IMAGE_BYTES", str(8 * 1024 * 1024)))  # 8 MB
 DEFAULT_MAX_AUDIO_BYTES = int(os.environ.get("RDASH_MAX_AUDIO_BYTES", str(16 * 1024 * 1024)))  # 16 MB
 DEFAULT_MAX_TEXT_LINES = int(os.environ.get("RDASH_MAX_TEXT_LINES", "500"))
+DEFAULT_MAX_UPLOAD_BYTES = int(os.environ.get("RDASH_MAX_UPLOAD_BYTES", str(200 * 1024 * 1024)))
+
+
+# Root folder for persisted file artifacts (one subdir per robot).
+FILES_ROOT = Path(__file__).resolve().parent / "files"
 
 ACTIVE_SEC = 5.0      # <=5s since last update -> active
 IDLE_SEC   = 60.0     # >5s and <=60s -> idle, else disconnected
@@ -224,8 +229,15 @@ def create_app(max_samples: int, max_image_bytes: int, message_queue: Optional[s
     template_dir = base_dir / "templates"
     static_dir = base_dir / "static"
 
+    # Ensure the files root exists (for persisted artifacts)
+    try:
+        FILES_ROOT.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        # Non-fatal; individual handlers to fail gracefully if FS is broken.
+        pass
+
     app = Flask(__name__, template_folder=str(template_dir), static_folder=str(static_dir), static_url_path="/static")
-    app.config["MAX_CONTENT_LENGTH"] = max_image_bytes + DEFAULT_MAX_AUDIO_BYTES
+    app.config["MAX_CONTENT_LENGTH"] = DEFAULT_MAX_UPLOAD_BYTES # max_image_bytes + DEFAULT_MAX_AUDIO_BYTES
     app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
     socketio = SocketIO(
@@ -276,6 +288,19 @@ def _status_from_ts(ts: Optional[float]) -> str:
     if age <= IDLE_SEC: return "idle"
     return "disconnected"
 
+def _sanitize_relpath(path_str: str) -> Path:
+    """
+    Sanitize a user-provided sensor/path string into a safe relative Path.
+    - Strips leading slashes
+    - Drops empty / '.' / '..' segments
+    - Raises ValueError on empty result
+    """
+    s = str(path_str or "").strip().lstrip("/\\")
+    segments = [seg for seg in s.split("/") if seg not in ("", ".", "..")]
+    if not segments:
+        raise ValueError("empty path")
+    return Path(*segments)
+
 # http handlers
 def register_http_handlers(app: Flask, sio: SocketIO, store: TimeSeriesStore):
     @app.after_request
@@ -308,6 +333,39 @@ def register_http_handlers(app: Flask, sio: SocketIO, store: TimeSeriesStore):
         if not _authorized():
             return jsonify({"error": "unauthorized"}), 401
         robots = store.list_robots()
+
+        # Ensure robots exist for any robot that has only files on disk.
+        try:
+            if FILES_ROOT.exists():
+                for r_dir in FILES_ROOT.iterdir():
+                    if not r_dir.is_dir():
+                        continue
+                    r = r_dir.name
+                    robots.setdefault(r, {
+                        "sensors": [],
+                        "cameras": [],
+                        "audios": [],
+                        "texts": [],
+                    })
+        except Exception:
+            # fail-safe: ignore filesystem issues here
+            pass
+
+        # Attach on-disk files per robot (if any) as a separate list.
+        for r, meta in robots.items():
+            files_list: List[str] = []
+            root = FILES_ROOT / r
+            try:
+                if root.exists():
+                    for p in root.rglob("*"):
+                        if p.is_file():
+                            rel = p.relative_to(root).as_posix()
+                            files_list.append(rel)
+            except Exception:
+                # fail-safe: don't break /api/robots if filesystem scan explodes
+                files_list = []
+            meta["files"] = sorted(files_list)
+
         statuses = {}
         for r, meta in robots.items():
             last_list = []
@@ -447,6 +505,51 @@ def register_http_handlers(app: Flask, sio: SocketIO, store: TimeSeriesStore):
         resp = Response(blob, mimetype="application/octet-stream")
         resp.headers['Cache-Control'] = 'no-store'
         return resp
+    
+    # MEDIA PUSH: arbitrary file artifacts (persistence on disk)
+    @app.route("/api/push_file", methods=["POST"])
+    def api_push_file():
+        if not _authorized():
+            return jsonify({"error":"unauthorized"}), 401
+        try:
+            form = request.form
+            robot = (form.get("robot") or request.args.get("robot") or "default").strip() or "default"
+            sensor = (form.get("sensor") or request.args.get("sensor") or "").strip()
+            if not sensor:
+                return jsonify({"error":"missing sensor"}), 400
+
+            # Require that the sensor path contains a 'file' segment
+            segs = [s.lower() for s in sensor.strip("/").split("/") if s]
+            if "file" not in segs:
+                return jsonify({"error": "sensor path must include a 'file' segment"}), 400
+
+            ct = request.content_type or ""
+            if "multipart/form-data" not in ct:
+                return jsonify({"error":"expected multipart/form-data"}), 415
+
+            up = request.files.get("file")
+            if not up or not up.filename:
+                return jsonify({"error":"no file"}), 400
+
+            # Map sensor -> files/<robot>/<sensor-path>
+            rel = _sanitize_relpath(sensor)
+            base = (FILES_ROOT / robot).resolve()
+            target_dir = (base / rel.parent).resolve()
+            if base not in target_dir.parents and target_dir != base:
+                return jsonify({"error":"bad path"}), 400
+            os.makedirs(target_dir, exist_ok=True)
+
+            dest = (base / rel).resolve()
+            if base not in dest.parents and dest != base:
+                return jsonify({"error":"bad path"}), 400
+
+            up.save(str(dest))
+            return jsonify({"ok": True, "robot": robot, "sensor": sensor})
+        except ValueError:
+            return jsonify({"error":"bad sensor path"}), 400
+        except Exception:
+            return jsonify({"error":"bad file payload"}), 400
+
 
     # MEDIA PUSH: AUDIO (retained for API compatibility)
     @app.route("/api/push_audio", methods=["POST"])
@@ -517,6 +620,21 @@ def register_http_handlers(app: Flask, sio: SocketIO, store: TimeSeriesStore):
                     yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + jpg + b'\r\n')
                 socketio.sleep(0.05)
         resp = Response(gen(), mimetype='multipart/x-mixed-replace; boundary=frame')
+        resp.headers['Cache-Control'] = 'no-store'
+        return resp
+    
+     # FILE DOWNLOADS (persisted artifacts)
+    @app.route("/files/<robot>/<path:filepath>")
+    def get_file(robot, filepath):
+        if not _authorized():
+            return Response("unauthorized", status=401)
+        base = (FILES_ROOT / robot).resolve()
+        target = (base / filepath).resolve()
+        if base != target and base not in target.parents:
+            return Response("not found", status=404)
+        if not target.is_file():
+            return Response("not found", status=404)
+        resp = send_file(str(target), as_attachment=True)
         resp.headers['Cache-Control'] = 'no-store'
         return resp
 

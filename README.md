@@ -1,4 +1,4 @@
-# R'DASH - Robot Information Telemetry Transport Dashboard (v1.2)
+# R'DASH - Robot Information Telemetry Transport Dashboard (v1.3)
 **Author:** Vamsi Karnam
 
 **License:** Apache License 2.0
@@ -20,6 +20,12 @@ Changelog:
 Changelog:
   - LiDAR Point Cloud Visualisation support
   - Zoom/Pan on charts (LShift+Scroll/LShift+LClick+Drag)
+```
+
+- rdash_v1.3: Continued beta
+```
+Changelog:
+  - Added support for file artifact support through API
 ```
 
 ## Screenshots
@@ -147,6 +153,16 @@ R’DASH is data-type agnostic at its core, it automatically discovers and strea
 6. **Audio**
 
 - Endpoint available for compatibility (/api/push_audio), but not visualized yet in the UI.
+
+7. **Files**
+
+- Type: ../files/..
+
+- Visualization: Donwloadable links rendered in the "Files" side panel.
+
+- Summary: Any file artifact uploaded via /api/push_file are persisted under ../files/..
+
+- HTTP(S) API only through python requests or curl, not supported via rdash_agent.py.
 
 
 ## Core design principles
@@ -365,10 +381,11 @@ python3 ros2_rdash_test_simulation.py
 
 1. Everything is an HTTP API. The server accepts JSON/multipart payloads and serves lightweight JSON for status, history, and metadata.
 2. Auth: Use Authorization: Bearer <token> for all /api/* endpoints and the WebSocket. The video endpoint also accepts ?token=... as a query parameter for simple embed tests.
-3. State is RAM-only. Deleting series/logs clears in-memory buffers. Restarting the server clears all state.
-4. Streaming: Numeric data is coalesced and broadcast over WebSocket; camera frames are exposed as MJPEG at /video/<robot>/<sensor>.
-5. Topic-agnostic: The agent flattens any ROS2 message into numeric fields and pushes to /api/push. Units/scales are attachable via --unit rules.
-6. Find the documentation here: *[latest API docs](https://github.com/vamsi-karnam/rdash/tree/main/docs)*
+3. Sensor State is RAM-only. Deleting series/logs clears in-memory buffers. Restarting the server clears all state.
+4. File artifcats are persistent on disk. Delete the files from disk to remove robot card remanents. Reload the page to get the latest POSTed file. 
+5. Streaming: Numeric data is coalesced and broadcast over WebSocket; camera frames are exposed as MJPEG at /video/<robot>/<sensor>.
+6. Topic-agnostic: The agent flattens any ROS2 message into numeric fields and pushes to /api/push. Units/scales are attachable via --unit rules.
+7. Find the documentation here: *[latest API docs](https://github.com/vamsi-karnam/rdash/tree/main/docs)*
 
 
 ## Dashboard behavior

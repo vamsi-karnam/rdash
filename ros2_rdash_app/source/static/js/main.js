@@ -211,6 +211,158 @@ function setDdsPlaceholder() {
 }
 
 
+
+// Files helpers (per-robot drawer, left side)
+let filesDrawerEl = null;
+let filesHandleEl = null;
+
+function destroyFilesDrawer() {
+  if (filesHandleEl && filesHandleEl.parentNode) filesHandleEl.parentNode.removeChild(filesHandleEl);
+  if (filesDrawerEl && filesDrawerEl.parentNode) filesDrawerEl.parentNode.removeChild(filesDrawerEl);
+  filesHandleEl = null;
+  filesDrawerEl = null;
+}
+
+function attachFilesDrawerTo(detailEl) {
+  // safety
+  destroyFilesDrawer();
+
+  // Drawer
+  filesDrawerEl = document.createElement('div');
+  filesDrawerEl.className = 'files-drawer';
+  filesDrawerEl.setAttribute('aria-hidden', 'true');
+
+  const header = el('div', { className: 'files-header' },
+    el('span', { className: 'files-title' }, 'Files'),
+    el('span', { className: 'spacer' }, ''),
+    el('button', {
+      className: 'btn secondary',
+      onclick: () => {
+        filesDrawerEl.classList.remove('open');
+        filesDrawerEl.setAttribute('aria-hidden', 'true');
+        // resize active charts for crisp layout
+        setTimeout(() => {
+          for (const entry of chartsBySensor.values()) {
+            try { entry?.ec?.resize({ animation: false }); } catch (_){}
+          }
+        }, 50);
+      }
+    }, 'Close')
+  );
+
+  const content = el('div', { className: 'files-content' });
+  filesDrawerEl.appendChild(header);
+  filesDrawerEl.appendChild(content);
+
+  // Handle (always shown on robot page when files exist)
+  filesHandleEl = document.createElement('button');
+  filesHandleEl.className = 'files-drawer-handle';
+  filesHandleEl.title = 'Files';
+  filesHandleEl.textContent = 'Files (0)';
+  filesHandleEl.onclick = () => {
+    const open = !filesDrawerEl.classList.contains('open');
+    filesDrawerEl.classList.toggle('open', open);
+    filesDrawerEl.setAttribute('aria-hidden', String(!open));
+    setTimeout(() => {
+      for (const entry of chartsBySensor.values()) {
+        try { entry?.ec?.resize({ animation: false }); } catch (_){}
+      }
+    }, 50);
+  };
+
+  // Attach to the page (robot detail)
+  document.body.appendChild(filesDrawerEl);
+  document.body.appendChild(filesHandleEl);
+
+  // start placeholder
+  setFilesPlaceholder();
+}
+
+function setFilesPlaceholder() {
+  if (!filesDrawerEl) return;
+  const wrap = filesDrawerEl.querySelector('.files-content');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  wrap.appendChild(el('div', { className: 'placeholder', style: 'margin:8px 0' },
+    'No files yet. Use /api/push_file with a /file/… sensor path to upload artifacts.'));
+  if (filesHandleEl) filesHandleEl.textContent = 'Files (0)';
+}
+
+async function rebuildFilesDrawerFor(robot, filePaths) {
+  if (!filesDrawerEl) return;
+  const wrap = filesDrawerEl.querySelector('.files-content');
+  if (!wrap) return;
+
+  const files = Array.isArray(filePaths) ? filePaths : [];
+  const count = files.length;
+  if (filesHandleEl) filesHandleEl.textContent = `Files (${count})`;
+
+  if (!count) {
+    setFilesPlaceholder();
+    return;
+  }
+
+  // Group files by "topic" = directory path (everything except the final segment)
+  // Example:
+  //   "file/_2025.flac"                    -> topic "file"
+  //   "file/random/_2025.flac"             -> topic "file/random"
+  const groups = new Map(); // topic -> [{ path, baseName }]
+
+  for (const path of files) {
+    const segs = String(path).split('/').filter(Boolean);
+    const baseName = segs.pop() || path;
+    const topic = segs.join('/') || '(root)';
+
+    let arr = groups.get(topic);
+    if (!arr) {
+      arr = [];
+      groups.set(topic, arr);
+    }
+    arr.push({ path, baseName });
+  }
+
+  wrap.innerHTML = '';
+
+  // Render one accordion per topic, similar to DDS drawer accordions
+  const topics = Array.from(groups.keys()).sort();
+  for (const topic of topics) {
+    const acc = el('details', { className: 'accordion' });
+    const sum = el(
+      'summary',
+      { className: 'accordion-summary' },
+      topic
+    );
+
+    const body = el('div', { className: 'accordion-body' });
+    const panel = el('div', { className: 'panel' });
+
+    const list = el('ul', { className: 'file-list' });
+
+    for (const { path, baseName } of groups.get(topic)) {
+      const li = el('li', { className: 'file-row' });
+
+      const segs = String(path).split('/').filter(Boolean);
+      const encodedSegments = segs.map(encodeURIComponent);
+      const href = `/files/${encodeURIComponent(robot)}/${encodedSegments.join('/')}`;
+
+      const link = el('a', {
+        href,
+        target: '_blank',
+        rel: 'noopener noreferrer',
+        className: 'file-link'
+      }, baseName);
+
+      li.appendChild(link);
+      list.appendChild(li);
+    }
+
+    panel.appendChild(list);
+    body.appendChild(panel);
+    acc.append(sum, body);
+    wrap.appendChild(acc);
+  }
+}
+
 // Disposer helper 
 function disposeChartFor(sensorKey) {
   const entry = chartsBySensor.get(sensorKey);
@@ -692,6 +844,8 @@ async function loadRobotsInto(container) {
       if (meta.texts && meta.texts.length) pills.appendChild(el('span', { className: 'pill' }, 'Logs'));
       // numeric active pill
       if (meta.sensors && meta.sensors.length) {pills.appendChild(el('span', { className: 'pill' }, 'Numeric'));}
+      // files pill (if any disk-backed artifacts exist)
+      if (meta.files && meta.files.length) { pills.appendChild(el('span', { className: 'pill' }, 'Files')); }
 
       card.appendChild(pills);
       card.onclick = () => navigateRobot(name);
@@ -704,6 +858,7 @@ async function loadRobotsInto(container) {
 function renderOverview() {
   // ensure DDS drawer is only on robot page
   destroyDdsDrawer();
+  destroyFilesDrawer();
 
   currentRobot = null;
   const detail = document.getElementById('detail');
@@ -783,17 +938,20 @@ async function navigateRobot(name) {
 
   // Attach per-robot DDS drawer (persistent on robot detail page)
   attachDdsDrawerTo(detail);
+  attachFilesDrawerTo(detail);
 
   // Meta
-  let metaSensors = [], metaCams = [], metaTexts = [];
+  let metaSensors = [], metaCams = [], metaTexts = [], metaFiles = [];
   let types = {};
   let statuses = {};
   try {
     const robotsData = await fetchJSON('/api/robots');
-    const meta = robotsData.robots?.[name] || { sensors: [], cameras: [], audios: [], texts: [] };
+    const meta = robotsData.robots?.[name] || { sensors: [], cameras: [], audios: [], texts: [], files: [] };
     metaSensors = meta.sensors || [];
     metaCams    = meta.cameras || [];
     metaTexts   = meta.texts || [];
+    metaFiles   = meta.files   || [];
+
     types       = await fetchJSON(`/api/types/${encodeURIComponent(name)}`);
     const st    = await fetchJSON(`/api/status/${encodeURIComponent(name)}`);
     statuses    = st || {};
@@ -821,12 +979,16 @@ async function navigateRobot(name) {
     // 2) Build the DDS drawer content
     await rebuildDdsDrawerFor(name, ddsSensors, ddsTexts, types, statuses);
 
+    // 3) Build the Files drawer content (simple list of download links)
+    await rebuildFilesDrawerFor(name, metaFiles);
+
     // (no rendering here; the page stacks will use regularSensors/regularTexts below)
   } catch (e) {
     console.error(e);
     // fallback if the API failed so the page still renders something
     var regularSensors = metaSensors || [];
     var regularTexts   = metaTexts || [];
+    metaFiles = metaFiles || [];
   }
 
   // TF preview

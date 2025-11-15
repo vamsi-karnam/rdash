@@ -41,6 +41,7 @@ Changelog:
 <td><img width="1910" height="1105" alt="Screenshot 2025-11-07 232148" src="https://github.com/user-attachments/assets/734715c8-fea0-4c1a-acf4-517859f4e321" /></td>
 <td><img width="1912" height="1104" alt="image" src="https://github.com/user-attachments/assets/516e0bea-a796-48ea-b0ee-47cc1fecc47b"/></td>
 <td><img width="1910" height="1105" alt="image" src="https://github.com/user-attachments/assets/e6af9dcf-fb91-426a-8c77-c80a999526a7" /></td>
+<td><img width="1910" height="1108" alt="image" src="https://github.com/user-attachments/assets/f3513244-00b3-478c-81e9-c17ef4a9a970" /></tr>td>
 </tr> 
 </table>
 

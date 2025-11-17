@@ -28,6 +28,12 @@ Changelog:
   - Added support for file artifacts through API
 ```
 
+- rdash_v1.4: First release candidate
+```
+Changelog:
+  - Added geo/map plot support for lat,lon values
+```  
+
 ## Screenshots
 
 <img width="1911" height="1107" alt="Screenshot 2025-11-08 003408" src="https://github.com/user-attachments/assets/fce6498f-4c2e-4bf2-a3e1-7efc51322229" />
@@ -118,6 +124,12 @@ R’DASH is data-type agnostic at its core, it automatically discovers and strea
 - Any text or numeric topic whose path includes the segment "dds" (case-insensitive) is automatically grouped in the DDS side panel, separate from regular robot sensors. This makes it easy to route diagnostics, network metrics, or system-level telemetry from DDS bridges or adapters without cluttering the main dashboard.
 
 > Example: /infra/dds/network/latency_ms, /dds/system/diagnostics
+
+**IMPORTANT:** ***Geo topics***
+
+- Any numeric topic whose path includes the segment "geo" (case-insensitive) is automatically plotted onto a map along with regular robot sensors. This makes it easy to plot routes and see tracks.
+
+> Example: /mybot/geo/fix where data can be "{data: [55.864687, -4.252214]}"
 
 3. **Images and video frames**
 

@@ -138,6 +138,37 @@ function isDdsSensorName(s) {
   return DDS_MARKERS.some(m => segs.includes(m.toLowerCase()));
 }
 
+// --- GEO helpers (naming + metric detection) -----------------------------
+function isGeoSensorName(name) {
+  if (!name) return false;
+  const segs = String(name).toLowerCase().split('/');
+  return segs.includes('geo');
+}
+
+// From a history object { metricKey: [[t,v], ...], ... } find lat/lon keys.
+function detectLatLonKeysFromHistory(hist) {
+  if (!hist || typeof hist !== 'object') return null;
+  const keys = Object.keys(hist);
+  let latKey = null;
+  let lonKey = null;
+  for (const k of keys) {
+    const kl = k.toLowerCase();
+    if (!latKey && (kl === 'lat' || kl.endsWith('.lat'))) latKey = k;
+    if (!lonKey && (kl === 'lon' || kl === 'lng' || kl.endsWith('.lon') || kl.endsWith('.lng'))) lonKey = k;
+  }
+  if (latKey && lonKey) return { latKey, lonKey };
+  return null;
+}
+
+function hasLatLonMetricsFromHistory(hist) {
+  return !!detectLatLonKeysFromHistory(hist);
+}
+
+// Leaflet maps keyed by "robot|sensor"
+// value: { map, marker, polyline, latKey, lonKey, times:[ms,...] }
+const geoMaps = new Map();
+
+
 let ddsDrawerEl = null;
 let ddsHandleEl = null;
 
@@ -416,7 +447,9 @@ function ensureSeriesIndex(entry, metric, labelIfCreate) {
 }
 
 // Chart helpers 
-function buildChart(canvas, sensorKey, hist, unitsMap, robot, sensor) {
+// status: optional ('active' | 'idle' | 'disconnected')
+// lastTsSec: optional last sample timestamp (seconds)
+function buildChart(canvas, sensorKey, hist, unitsMap, robot, sensor, status, lastTsSec) {
   // Destroy any previous chart
   if (chartsBySensor.has(sensorKey)) {
     const prev = chartsBySensor.get(sensorKey);
@@ -505,9 +538,34 @@ function buildChart(canvas, sensorKey, hist, unitsMap, robot, sensor) {
   }
 
   const WINDOW_SEC = 10, LEAD_SEC = 6;
-  const now = Date.now();
-  const min0 = now - (WINDOW_SEC + LEAD_SEC) * 1000;
-  const max0 = now + LEAD_SEC * 1000;
+
+  // Prefer explicit lastTsSec from /api/meta; fall back to max from history.
+  let lastSampleMs = (typeof lastTsSec === 'number' && Number.isFinite(lastTsSec))
+    ? lastTsSec * 1000
+    : null;
+  if (lastSampleMs == null) {
+    for (const k of keys) {
+      const pts = hist[k] || [];
+      if (pts.length) {
+        const [tLast] = pts[pts.length - 1];
+        const ms = tLast * 1000;
+        if (lastSampleMs == null || ms > lastSampleMs) lastSampleMs = ms;
+      }
+    }
+  }
+
+  let min0, max0;
+  if (lastSampleMs != null) {
+    // Center the initial window around the last sample so it remains visible
+    const spanMs = WINDOW_SEC * 1000;
+    min0 = lastSampleMs - spanMs / 2;
+    max0 = lastSampleMs + spanMs / 2;
+  } else {
+    // No history yet: fall back to a "live" window around now
+    const now = Date.now();
+    min0 = now - (WINDOW_SEC + LEAD_SEC) * 1000;
+    max0 = now + LEAD_SEC * 1000;
+  }
 
   ec.setOption({
     animation: false,
@@ -537,14 +595,32 @@ function buildChart(canvas, sensorKey, hist, unitsMap, robot, sensor) {
 
   // Track “pinned” (user-zoomed) mode so we don’t auto-follow
   let pinned = false;
-  ec.on('datazoom', () => { pinned = true; });
+  ec.on('datazoom', () => {
+    pinned = true;
+    const entry = chartsBySensor.get(sensorKey);
+    if (entry) entry.pinned = true;
+  });
 
-  // Double-click = reset zoom & resume follow (blank chart fix when reset)
+  // Double-click = reset zoom & resume follow, centered on last sample if known
   elc.addEventListener('dblclick', () => {
+    const entry = chartsBySensor.get(sensorKey);
     pinned = false;
-    ec.dispatchAction({ type: 'dataZoom', start: 0, end: 100 }); // reset zoom window
-    const n = Date.now();
-    ec.setOption({ xAxis: { min: n - (WINDOW_SEC + LEAD_SEC) * 1000, max: n + LEAD_SEC * 1000 } });
+    if (entry) {
+      entry.pinned = false;
+      entry.autoFollow = true;
+    }
+    ec.dispatchAction({ type: 'dataZoom', start: 0, end: 100 });
+    const baseMs = (entry && entry.lastSampleMs && Number.isFinite(entry.lastSampleMs))
+      ? entry.lastSampleMs
+      : Date.now();
+    const spanMs = (entry ? entry.windowSec : WINDOW_SEC) * 1000;
+    ec.setOption({
+      xAxis: {
+        min: baseMs - spanMs / 2,
+        max: baseMs + spanMs / 2,
+        axisLabel: { formatter: (val) => fmtClock(val) }
+      }
+    });
   });
 
   // Wire toolbar
@@ -625,9 +701,18 @@ function buildChart(canvas, sensorKey, hist, unitsMap, robot, sensor) {
     // Clear buffer either way
     entry.bufferByMetric.clear();
 
-    // Nudge x-axis to now
+    // Nudge x-axis to now and resume live follow
     const n = Date.now();
-    ec.setOption({ xAxis: { min: n - (entry.windowSec + entry.leadSec) * 1000, max: n + entry.leadSec * 1000 } });
+    entry.lastSampleMs = n;
+    entry.pinned = false;
+    entry.autoFollow = true;
+    ec.setOption({
+      xAxis: {
+        min: n - (entry.windowSec + entry.leadSec) * 1000,
+        max: n + entry.leadSec * 1000,
+        axisLabel: { formatter: (val) => fmtClock(val) }
+      }
+    });
   });
 
   delBtn.addEventListener('click', async () => {
@@ -656,6 +741,8 @@ function buildChart(canvas, sensorKey, hist, unitsMap, robot, sensor) {
 
       // Follow live again after delete
       entry.pinned = false;
+      entry.autoFollow = true;
+      entry.lastSampleMs = null;
 
       // Reset ID map so fresh metrics recreate safely
       entry.seriesIdByMetric = new Map();
@@ -700,6 +787,11 @@ function buildChart(canvas, sensorKey, hist, unitsMap, robot, sensor) {
     windowSec: WINDOW_SEC,
     leadSec: LEAD_SEC,
     pinned,
+    // Last sample time (ms since epoch) so we can center on it when idle
+    lastSampleMs: lastSampleMs || null,
+    // Auto-follow is disabled if the sensor is idle/disconnected when opened.
+    autoFollow: !status || status === 'active',
+    idleMode: !!status && status !== 'active',
     _resize: resize,
     sensorKey                   // NEW: used for building stable IDs
   });
@@ -755,6 +847,180 @@ function buildChart(canvas, sensorKey, hist, unitsMap, robot, sensor) {
   }
 }
 
+// --- GEO: install Chart / Map tabs for geo-capable sensors ---------------
+function installGeoTabs(panel, sensorKey, robot, sensor, hist, latLonKeys) {
+  if (!isGeoSensorName(sensor)) return;
+  if (!hasLatLonMetricsFromHistory(hist)) return;
+  if (!panel) return;
+
+  // If we've already installed tabs for this panel, bail.
+  if (panel.querySelector('.geo-tabs')) return;
+
+  const chartWrap = panel.querySelector('.chart-wrap');
+  if (!chartWrap) return;
+
+  const tabs = document.createElement('div');
+  tabs.className = 'geo-tabs';
+
+  const btnChart = document.createElement('button');
+  btnChart.className = 'geo-tab-btn active';
+  btnChart.textContent = 'Chart';
+
+  const btnMap = document.createElement('button');
+  btnMap.className = 'geo-tab-btn';
+  btnMap.textContent = 'Map';
+
+  tabs.appendChild(btnChart);
+  tabs.appendChild(btnMap);
+
+  // Insert tabs just before the chart.
+  panel.insertBefore(tabs, chartWrap);
+
+  // Map container lives under the chart, initially hidden.
+  const mapDiv = document.createElement('div');
+  mapDiv.className = 'geo-map';
+  mapDiv.style.display = 'none';
+  mapDiv.dataset.robot = robot;
+  mapDiv.dataset.sensor = sensor;
+  panel.appendChild(mapDiv);
+
+  let currentMode = 'chart';
+
+  function showChart() {
+    currentMode = 'chart';
+    chartWrap.style.display = '';
+    mapDiv.style.display = 'none';
+    btnChart.classList.add('active');
+    btnMap.classList.remove('active');
+  }
+
+  function showMap() {
+    currentMode = 'map';
+    chartWrap.style.display = 'none';
+    mapDiv.style.display = '';
+    btnChart.classList.remove('active');
+    btnMap.classList.add('active');
+
+    if (!mapDiv._geoInit) {
+      initGeoMap(mapDiv, robot, sensor, hist, latLonKeys);
+      mapDiv._geoInit = true;
+    }
+    // Make sure Leaflet recomputes size when first shown.
+    setTimeout(() => {
+      const key = `${robot}|${sensor}`;
+      const gm = geoMaps.get(key);
+      if (gm && gm.map && gm.map.invalidateSize) {
+        gm.map.invalidateSize();
+      }
+    }, 80);
+  }
+
+  btnChart.onclick = showChart;
+  btnMap.onclick = showMap;
+
+  // Default: Chart
+  showChart();
+}
+
+function initGeoMap(container, robot, sensor, hist, latLonKeys) {
+  if (!container || !latLonKeys) return;
+  if (typeof L === 'undefined') {
+    console.warn('Leaflet not available; geo map disabled');
+    return;
+  }
+
+  const { latKey, lonKey } = latLonKeys;
+  const latSeries = (hist[latKey] || []);
+  const lonSeries = (hist[lonKey] || []);
+  const n = Math.min(latSeries.length, lonSeries.length);
+
+  if (!n) {
+    // No history yet; a live update will still be able to move the marker later.
+    const map = L.map(container).setView([0, 0], 2);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19
+    }).addTo(map);
+    const marker = L.marker([0, 0]).addTo(map);
+    const polyline = L.polyline([], {}).addTo(map);
+    geoMaps.set(`${robot}|${sensor}`, { map, marker, polyline, latKey, lonKey, times: [] });
+    return;
+  }
+
+  const path = [];
+  const times = [];
+  for (let i = 0; i < n; i++) {
+    const [tLat, vLat] = latSeries[i];
+    const [tLon, vLon] = lonSeries[i];
+    if (Number.isFinite(vLat) && Number.isFinite(vLon)) {
+      path.push([vLat, vLon]);
+      const tSec = Number.isFinite(tLat) ? tLat : tLon;
+      times.push(Number.isFinite(tSec) ? tSec * 1000 : NaN);
+    }
+  }
+
+  const last = path[path.length - 1];
+  const map = L.map(container).setView(last, 15);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19
+  }).addTo(map);
+
+  const polyline = L.polyline(path, {}).addTo(map);
+  const marker = L.marker(last).addTo(map);
+  const key = `${robot}|${sensor}`;
+  const gm = { map, marker, polyline, latKey, lonKey, times };
+  geoMaps.set(key, gm);
+
+  // Clicking the marker always shows the *latest* sample time at its position
+  marker.on('click', () => {
+    if (!gm.times || !gm.times.length) return;
+    const tsMs = gm.times[gm.times.length - 1]; // latest
+    if (!Number.isFinite(tsMs)) return;
+    const label = new Date(tsMs).toLocaleString();
+    marker.bindPopup(`<div>Time: ${label}</div>`).openPopup();
+  });
+
+  // Clicking on the track shows the datetime of the nearest (and latest) sample
+  polyline.on('click', (e) => {
+    if (!gm.times || !gm.times.length) return;
+    const latlngs = gm.polyline.getLatLngs();
+    if (!Array.isArray(latlngs) || !latlngs.length) return;
+
+    const click = e.latlng;
+    let bestIdx = 0;
+    let bestDist = Infinity;
+
+    for (let i = 0; i < latlngs.length; i++) {
+      const ll = latlngs[i];
+      if (!ll) continue;
+      let d;
+      if (typeof ll.distanceTo === 'function') {
+        d = ll.distanceTo(click);
+      } else {
+        const dx = ll.lat - click.lat;
+        const dy = ll.lng - click.lng;
+        d = dx * dx + dy * dy;
+      }
+      if (d < bestDist - 1e-9) {
+        bestDist = d;
+        bestIdx = i;
+      } else if (Math.abs(d - bestDist) <= 1e-9 && i > bestIdx) {
+        // If multiple samples sit at (almost) the same spot, prefer the latest one
+        bestIdx = i;
+      }
+    }
+
+    const tsMs = gm.times[bestIdx];
+    if (!Number.isFinite(tsMs)) return;
+    const label = new Date(tsMs).toLocaleString();
+
+    L.popup()
+      .setLatLng(latlngs[bestIdx])
+      .setContent(`<div>Time: ${label}</div>`)
+      .openOn(gm.map);
+  });
+}
+
+
 function updateAxesWindow(entry, latestMs) {
   if (!entry || entry.paused) return;
   const c = entry.chart;
@@ -801,8 +1067,17 @@ function applyBufferedUpdates() {
       }
     }
 
-    // Auto-follow latest unless user pinned by zooming
-    if (!pinned) {
+
+    // Auto-follow latest unless user pinned by zooming or follow is disabled
+    entry.lastSampleMs = whenMs;
+    if (entry.autoFollow === undefined) entry.autoFollow = true; // safety for older entries
+    if (!pinned && entry.autoFollow !== false) {
+      // If this chart was opened while idle/disconnected, a new data point means
+      // the stream has "resumed" — flip back into live follow mode.
+      if (entry.idleMode) {
+        entry.idleMode = false;
+        entry.autoFollow = true;
+      }
       ec.setOption({
         xAxis: { min: whenMs - (windowSec + leadSec) * 1000, max: whenMs + leadSec * 1000 }
       }, { lazyUpdate: true });
@@ -1059,20 +1334,41 @@ async function navigateRobot(name) {
     const sensorKey = `${name}/${s}`;
 
     acc.addEventListener('toggle', async () => {
-      // On close: dispose & clean DOM
+      // On close: dispose & clean DOM (chart + geo UI)
       if (!acc.open) {
+        // Dispose ECharts instance for this sensor
         disposeChartFor(sensorKey);
+        // Remove chart container (if any)
         const oldWrap = panel.querySelector('.chart-wrap');
         if (oldWrap) oldWrap.remove();
+
+        // Remove geo tabs (Chart / Map) if present
+        const geoTabs = panel.querySelector('.geo-tabs');
+        if (geoTabs) geoTabs.remove();
+
+        // Remove geo map + Leaflet instance if present
+        const geoMapEl = panel.querySelector('.geo-map');
+        if (geoMapEl) {
+          const geoKey = `${name}|${s}`;
+          const gm = geoMaps.get(geoKey);
+          try {
+            if (gm && gm.map && gm.map.remove) {
+              gm.map.remove();
+            }
+          } catch (_) {}
+          geoMaps.delete(geoKey);
+          geoMapEl.remove();
+        }
+
         return;
       }
 
-      // On open: clean any old wrapper and mount a fresh canvas before calling buildChart
-      const prevWrap = panel.querySelector('.chart-wrap');
-      if (prevWrap) prevWrap.remove();
+      // // On open: clean any old wrapper and mount a fresh canvas before calling buildChart
+      // const prevWrap = panel.querySelector('.chart-wrap');
+      // if (prevWrap) prevWrap.remove();
 
-      const canvas = document.createElement('canvas');
-      panel.appendChild(canvas);
+      // const canvas = document.createElement('canvas');
+      // panel.appendChild(canvas);
 
       try {
         const [hist, meta] = await Promise.all([
@@ -1080,14 +1376,93 @@ async function navigateRobot(name) {
           fetchJSON(`/api/meta/${encodeURIComponent(name)}/${encodeURIComponent(s)}`)
         ]);
 
-        buildChart(canvas, sensorKey, hist, (meta && meta.units) || {}, name, s);
-        ensureSocket();
+        // const lastTsSec = (meta && typeof meta.last === 'number') ? meta.last : undefined;
+        // const status = (meta && meta.status) || undefined;
+        // buildChart(canvas, sensorKey, hist, (meta && meta.units) || {}, name, s, status, lastTsSec);
 
-        // After the details expands, give layout a tick then ensure a crisp resize.
-        setTimeout(() => {
-          const entry = chartsBySensor.get(sensorKey);
-          if (entry && entry.ec) entry.ec.resize({ animation: false });
-        }, 0);
+        // // If this is a geo-capable sensor (name + lat/lon metrics), install Chart/Map tabs.
+        // const latLonKeys = detectLatLonKeysFromHistory(hist);
+        // if (isGeoSensorName(s) && latLonKeys) {
+        //   installGeoTabs(panel, sensorKey, name, s, hist, latLonKeys);
+        // }
+
+        // ensureSocket();
+
+        // // After the details expands, give layout a tick then ensure a crisp resize.
+        // setTimeout(() => {
+        //   const entry = chartsBySensor.get(sensorKey);
+        //   if (entry && entry.ec) entry.ec.resize({ animation: false });
+        // }, 0);
+
+       const isGeo = isGeoSensorName(s);
+
+        if (isGeo) {
+          // --- GEO NUMERIC: MAP-ONLY, NO CHART ---
+          const latLonKeys = detectLatLonKeysFromHistory(hist);
+          if (!latLonKeys) {
+            // No lat/lon yet; show a placeholder but still ensure socket for live updates.
+            let mapDiv = panel.querySelector('.geo-map');
+            if (!mapDiv) {
+              mapDiv = document.createElement('div');
+              mapDiv.className = 'geo-map';
+              panel.appendChild(mapDiv);
+            }
+            mapDiv.innerHTML = '';
+            mapDiv.appendChild(placeholder('Waiting for geo lat/lon samples…'));
+            ensureSocket();
+            return;
+          }
+
+          // Clean any old chart-wrap (if it existed from a previous version)
+          const prevWrap = panel.querySelector('.chart-wrap');
+          if (prevWrap) prevWrap.remove();
+
+          // Create (or reuse) the map container
+          let mapDiv = panel.querySelector('.geo-map');
+          if (!mapDiv) {
+            mapDiv = document.createElement('div');
+            mapDiv.className = 'geo-map';
+            panel.appendChild(mapDiv);
+          }
+          mapDiv.style.display = '';
+          mapDiv.dataset.robot = name;
+          mapDiv.dataset.sensor = s;
+
+          // Initialize Leaflet map for this geo sensor
+          initGeoMap(mapDiv, name, s, hist, latLonKeys);
+          mapDiv._geoInit = true;
+
+          ensureSocket();
+
+          // Give layout a tick, then ensure Leaflet resizes correctly.
+          setTimeout(() => {
+            const key = `${name}|${s}`;
+            const gm = geoMaps.get(key);
+            if (gm && gm.map && gm.map.invalidateSize) {
+              gm.map.invalidateSize();
+            }
+          }, 80);
+        } else {
+          // --- NON-GEO NUMERIC: NORMAL CHART BEHAVIOUR ---
+          // On open: clean any old wrapper and mount a fresh canvas before calling buildChart
+          const prevWrap = panel.querySelector('.chart-wrap');
+          if (prevWrap) prevWrap.remove();
+
+          const canvas = document.createElement('canvas');
+          panel.appendChild(canvas);
+
+          const lastTsSec = (meta && typeof meta.last === 'number') ? meta.last : undefined;
+          const status = (meta && meta.status) || undefined;
+          buildChart(canvas, sensorKey, hist, (meta && meta.units) || {}, name, s, status, lastTsSec);
+
+          ensureSocket();
+
+          // After the details expands, give layout a tick then ensure a crisp resize.
+          setTimeout(() => {
+            const entry = chartsBySensor.get(sensorKey);
+            if (entry && entry.ec) entry.ec.resize({ animation: false });
+          }, 0);
+        }
       } catch (e) {
         console.error('chart init failed', e);
       }
@@ -1241,7 +1616,9 @@ async function rebuildDdsDrawerFor(robot, ddsSensors, ddsTexts, types, statuses)
             fetchJSON(`/api/history/${encodeURIComponent(robot)}/${encodeURIComponent(s)}`),
             fetchJSON(`/api/meta/${encodeURIComponent(robot)}/${encodeURIComponent(s)}`)
           ]);
-          buildChart(canvas, sensorKey, hist, (meta && meta.units) || {}, robot, s);
+          const lastTsSec = (meta && typeof meta.last === 'number') ? meta.last : undefined;
+          const status = (meta && meta.status) || undefined;
+          buildChart(canvas, sensorKey, hist, (meta && meta.units) || {}, robot, s, status, lastTsSec);
           ensureSocket();
           setTimeout(() => {
             const entry = chartsBySensor.get(sensorKey);
@@ -1354,6 +1731,38 @@ function ensureSocket(){
       }
     }
     const sensorKey = `${robot}/${sensor}`; //keep?
+
+    // Live GEO updates (if a map has been initialised for this sensor)
+    if (isGeoSensorName(sensor)) {
+      const geoKey = `${robot}|${sensor}`;
+      const gm = geoMaps.get(geoKey);
+      if (gm) {
+        const { latKey, lonKey } = gm;
+        const lat = data[latKey];
+        const lon = data[lonKey];
+        if (Number.isFinite(lat) && Number.isFinite(lon)) {
+          const pt = [lat, lon];
+          // keep a parallel timestamp array for map popups
+          const tsMs = t * 1000;
+          if (Array.isArray(gm.times)) {
+            gm.times.push(tsMs);
+          } else {
+            gm.times = [tsMs];
+          }
+          if (gm.polyline && gm.polyline.addLatLng) gm.polyline.addLatLng(pt);
+          if (gm.marker && gm.marker.setLatLng) gm.marker.setLatLng(pt);
+         // If this is the first (and only) point so far, attach popup to marker
+          if (gm.times.length === 1) {
+            const tsMs = gm.times[0];
+            const label = new Date(tsMs).toLocaleString();
+            gm.marker.bindPopup(`<div>Time: ${label}</div>`);
+            gm.marker.on('click', () => gm.marker.openPopup());
+          }
+          if (gm.map && gm.map.panTo) gm.map.panTo(pt, { animate: false });
+        }
+      }
+    }
+
 
     const entry = chartsBySensor.get(sensorKey);
     if (entry && entry.paused) {

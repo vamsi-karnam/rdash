@@ -337,3 +337,29 @@ canvas { width: 100%; height: 280px; display: block; }
 .files-content .chart-wrap {
   flex: 0 0 auto;
 }
+
+/* Geo (Chart / Map toggle) */
+.geo-tabs {
+  display: inline-flex;
+  gap: 6px;
+  margin: 8px 0;
+}
+.geo-tabs .geo-tab-btn {
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border-light);
+  background: #25315d;
+  font-size: 13px;
+  cursor: pointer;
+}
+.geo-tabs .geo-tab-btn.active {
+  background: var(--accent);
+  color: #fff;
+}
+.geo-map {
+  width: 100%;
+  height: 320px;
+  border-radius: 12px;
+  border: 1px solid var(--border-light);
+  overflow: hidden;
+}
